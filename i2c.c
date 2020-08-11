@@ -14,8 +14,10 @@ void I2CGPIOinit(void){
 	// Enable IO Port B clock
 	BIT_SET(RCC->APB2ENR, RCC_APB2ENR_IOPBEN);
 
-	//Put 0b11 in pin 6/7 CNF bits for alternate function open-drain
-	//Put 0b11 in pin 6/7 MODE bits for 50MHz
+	/* CRL
+	 * CNFy[1:0]=11 (open drain,50MHz)
+	 * MODEy[1:0]=11 (output mode)
+	 */
 	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF6|GPIO_CRL_MODE6);
 	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF7|GPIO_CRL_MODE7);
 }
