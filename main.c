@@ -121,7 +121,7 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 256);
   defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
@@ -254,7 +254,6 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
 
 }
 
@@ -289,7 +288,7 @@ void StartDefaultTask(void const * argument)
 
 	char str[100];
 
-	debugPrint("Start Tasks...\r\n");
+	debugPrint("Start tasks...\r\n");
 	if (I2C_Read(&hi2c1, 0x68, 0x75, data, 1) == I2C_OK) {
 		if (data[0] == 113) {
 			data[0] = 0;
@@ -300,9 +299,12 @@ void StartDefaultTask(void const * argument)
 			I2C_Write(&hi2c1, 0x68, 0x1c, data, 1, 0);
 			data[0] = 0;
 			I2C_Write(&hi2c1, 0x68, 0x1b, data, 1, 0);
+		} else {
+			debugPrint("Wrong who_am_i number...\r\n");
 		}
 	}
 
+	debugPrint("Start loop...\r\n");
   /* Infinite loop */
 	for(;;)
 	{
@@ -312,8 +314,7 @@ void StartDefaultTask(void const * argument)
 			sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
 			debugPrint(str);
 		}
-
-		vTaskDelay(1000/portTICK_PERIOD_MS);
+		osDelay(10);
 	}
   /* USER CODE END 5 */
 }
