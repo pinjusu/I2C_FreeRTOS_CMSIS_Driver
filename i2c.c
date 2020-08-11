@@ -6,22 +6,6 @@
  */
 #include "i2c.h"
 
-void I2CGPIOinit(void) {
-	/* GPIO Init
-	 * PB6 ------> I2C1_SCL
-	 * PB7 ------> I2C1_SDA
-	*/
-	// Enable IO Port B clock
-	BIT_SET(RCC->APB2ENR, RCC_APB2ENR_IOPBEN);
-
-	/* CRL
-	 * CNFy[1:0]=11 (open drain,50MHz)
-	 * MODEy[1:0]=11 (output mode)
-	 */
-	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF6|GPIO_CRL_MODE6);
-	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF7|GPIO_CRL_MODE7);
-}
-
 /* I2C Initial for 400KHz Fast Mode */
 I2C_State I2C_Init(I2C_Handle *hi2c) {
 	uint32_t PCLK1;
@@ -32,7 +16,20 @@ I2C_State I2C_Init(I2C_Handle *hi2c) {
 	if (!hi2c)
 		return I2C_ERR;
 
-	I2CGPIOinit();
+	/* GPIO Init
+	 * PB6 ------> I2C1_SCL
+	 * PB7 ------> I2C1_SDA
+	*/
+	// Enable IO Port B and I2C1 clocks
+	BIT_SET(RCC->APB2ENR, RCC_APB2ENR_IOPBEN);
+	BIT_SET(RCC->APB1ENR, RCC_APB1ENR_I2C1EN);
+
+	/* CRL
+	 * CNFy[1:0]=11 (open drain,50MHz)
+	 * MODEy[1:0]=11 (output mode)
+	 */
+	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF6|GPIO_CRL_MODE6);
+	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF7|GPIO_CRL_MODE7);
 
 	/* CR1
 	 * bit 0: 0 (Disable the selected I2C peripheral.)
@@ -48,6 +45,7 @@ I2C_State I2C_Init(I2C_Handle *hi2c) {
 	 * bit 5-0: 8.(I2C Peripheral clock frequency).
 	 */
 	BIT_MODIFY(hi2c->instance->CR2, i2c_clk_freq, I2C_CR2_FREQ);
+	hi2c->instance->CR2 = i2c_clk_freq;
 
 	/*TRISE
 	 * bit 5-0: 9(the rising time for SCL)
@@ -125,7 +123,7 @@ I2C_State I2C_Write(I2C_Handle *hi2c, uint8_t slaveAddr, uint8_t regAddr, uint8_
 	}
 
 	//Generate a start condition and turn on ACKs
-	BIT_SET(hi2c->instance->CR1, I2C_CR1_START | I2C_CR1_ACK);
+	BIT_SET(I2C1->CR1, I2C_CR1_START | I2C_CR1_ACK);
 
 	while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_SB));
 	hi2c->instance->DR = hi2c->slaveAddr;

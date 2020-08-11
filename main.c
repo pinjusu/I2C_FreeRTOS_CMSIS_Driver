@@ -43,7 +43,6 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
@@ -61,7 +60,7 @@ void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 static void JS_I2C1_Init(void);
-static void debugPrint(UART_HandleTypeDef *huart, char _out[]);
+void debugPrint(char []);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -85,7 +84,7 @@ int main(void)
   HAL_Init();
 
   /* USER CODE BEGIN Init */
-  //JS_I2C1_Init();
+
   /* USER CODE END Init */
 
   /* Configure the system clock */
@@ -100,11 +99,12 @@ int main(void)
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  JS_I2C1_Init();
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
-  /* add mutexes, ... */
+  /* add mutex
+   * es, ... */
   /* USER CODE END RTOS_MUTEX */
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
@@ -121,15 +121,15 @@ int main(void)
 
   /* Create the thread(s) */
   /* definition and creation of defaultTask */
-  //osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
-  //defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 128);
+  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
 
   /* USER CODE BEGIN RTOS_THREADS */
   /* add threads, ... */
   /* USER CODE END RTOS_THREADS */
 
   /* Start scheduler */
-  //osKernelStart();
+  osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
@@ -137,7 +137,7 @@ int main(void)
   while (1)
   {
     /* USER CODE END WHILE */
-	  debugPrint(&huart2,"!!!\n");
+
     /* USER CODE BEGIN 3 */
   }
   /* USER CODE END 3 */
@@ -260,13 +260,17 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 static void JS_I2C1_Init(void){
+	hi2c1.instance = I2C1;
+	hi2c1.clockSpeed = 400000;
+
 	if (I2C_Init(&hi2c1) != I2C_OK)
 	{
 		Error_Handler();
 	}
 }
-static void debugPrint(UART_HandleTypeDef *huart, char _out[]){
-	HAL_UART_Transmit(huart, (uint8_t *) _out, strlen(_out), 10);
+
+void debugPrint(char _out[]){
+	HAL_UART_Transmit(&huart2, (uint8_t *) _out, strlen(_out), 1000);
 }
 /* USER CODE END 4 */
 
@@ -281,20 +285,36 @@ void StartDefaultTask(void const * argument)
 {
   /* USER CODE BEGIN 5 */
 	uint8_t data[6] = {0};
+	int16_t acc[3] = {0};
+
+	char str[100];
+
+	debugPrint("Start Tasks...\r\n");
+	if (I2C_Read(&hi2c1, 0x68, 0x75, data, 1) == I2C_OK) {
+		if (data[0] == 113) {
+			data[0] = 0;
+			I2C_Write(&hi2c1, 0x68, 0x6b, data, 1, 0);
+			data[0] = 0x07;
+			I2C_Write(&hi2c1, 0x68, 0x19, data, 1, 0);
+			data[0] = 0;
+			I2C_Write(&hi2c1, 0x68, 0x1c, data, 1, 0);
+			data[0] = 0;
+			I2C_Write(&hi2c1, 0x68, 0x1b, data, 1, 0);
+		}
+	}
 
   /* Infinite loop */
-  for(;;)
-  {
-	  I2C_Read(&hi2c1, 0xD0, 0x75, data, 1);
-	  char testbuff[80];
-	  sprintf(testbuff,"data: %hhn\n",data);
+	for(;;)
+	{
+		if (I2C_Read(&hi2c1, 0x68, 0x3b, data, 6) == I2C_OK) {
+			for(int i=0;i<3;i++)
+				acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
+			sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
+			debugPrint(str);
+		}
 
-	  if(data[0]==113)
-		  debugPrint(&huart2,testbuff);
-	  else
-		  debugPrint(&huart2,testbuff);
-	  osDelay(1);
-  }
+		vTaskDelay(1000/portTICK_PERIOD_MS);
+	}
   /* USER CODE END 5 */
 }
 

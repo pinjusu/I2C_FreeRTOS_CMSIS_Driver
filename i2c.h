@@ -12,8 +12,10 @@
 
 #define BIT_GET(reg, bit)			((reg) & (bit))
 #define BIT_SET(reg, bit)			((reg) |= (bit))
+#define BIT_WRITE(reg, bit)			((reg) = (bit))
+#define BIT_READ(reg)				(reg)
 #define BIT_CLEAR(reg, bit)			((reg) &= ~(bit))
-#define BIT_MODIFY(reg, bit, mask)	((reg) = (((reg) & ~(mask)) | ((bit) & (mask))))
+#define BIT_MODIFY(reg, bit, mask)	BIT_WRITE(BIT_READ(reg), (((BIT_READ(reg)) & (~(mask))) | ((mask) & (bit))))
 
 typedef enum {
 	I2C_OK,
@@ -33,5 +35,7 @@ typedef struct {
 I2C_State I2C_Init(I2C_Handle *);
 I2C_State I2C_Write(I2C_Handle *, uint8_t, uint8_t, uint8_t *, uint8_t, _Bool);
 I2C_State I2C_Read(I2C_Handle *, uint8_t, uint8_t, uint8_t *, uint8_t);
+
+extern void debugPrint(char []);
 
 #endif /* INC_I2C_H_ */
