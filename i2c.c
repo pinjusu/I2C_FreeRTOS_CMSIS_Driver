@@ -2,11 +2,11 @@
  * i2c.c
  *
  *  Created on: Aug 10, 2020
- *      Author: Joe
+ *      Author: Joe, Ruby
  */
 #include "i2c.h"
 
-void I2CGPIOinit(void){
+void I2CGPIOinit(void) {
 	/* GPIO Init
 	 * PB6 ------> I2C1_SCL
 	 * PB7 ------> I2C1_SDA
@@ -101,6 +101,97 @@ I2C_State I2C_Init(I2C_Handle *hi2c) {
 	return I2C_OK;
 }
 
-//void i2c_read;
-//
-//void i2c_write;
+I2C_State I2C_Write(I2C_Handle *hi2c, uint8_t slaveAddr, uint8_t regAddr, uint8_t *data, uint8_t dataSize, _Bool isRead) {
+	uint32_t tmp;
+
+	if (!hi2c)
+		return I2C_ERR;
+
+	for (int i=0; i<6; i++) {
+		if (!BIT_GET(hi2c->instance->SR2, I2C_SR2_BUSY))
+			break;
+
+		if (i == 5) {
+			return I2C_ERR;
+		}
+	}
+
+	hi2c->slaveAddr = slaveAddr << 1;
+	hi2c->regAddr = regAddr;
+	hi2c->sizeBuff = dataSize;
+
+	for (int i=0; i<dataSize; i++) {
+		hi2c->buff[i] = data[i];
+	}
+
+	//Generate a start condition and turn on ACKs
+	BIT_SET(hi2c->instance->CR1, I2C_CR1_START | I2C_CR1_ACK);
+
+	while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_SB));
+	hi2c->instance->DR = hi2c->slaveAddr;
+
+	while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_ADDR));
+	tmp = hi2c->instance->SR2;
+	UNUSED(tmp);
+	hi2c->instance->DR = hi2c->regAddr;
+
+	while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_TXE));
+
+	for (int i=0; i<hi2c->sizeBuff; i++) {
+		hi2c->instance->DR = hi2c->buff[i];
+		while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_TXE));
+	}
+
+	if (!isRead)
+		BIT_SET(hi2c->instance->CR1, I2C_CR1_STOP);
+
+	return I2C_OK;
+}
+
+I2C_State I2C_Read(I2C_Handle *hi2c, uint8_t slaveAddr, uint8_t regAddr, uint8_t *data, uint8_t dataSize) {
+	uint32_t tmp;
+
+	if (!hi2c || dataSize <= 0)
+		return I2C_ERR;
+
+	if (I2C_Write(hi2c, slaveAddr, regAddr, NULL, 0, 1) == I2C_ERR)
+		return I2C_ERR;
+
+	hi2c->slaveAddr = (slaveAddr << 1) + 1;
+	hi2c->regAddr = regAddr;
+	hi2c->sizeBuff = dataSize;
+	hi2c->buff = data;
+
+	//Generate a start condition and turn on ACKs
+	BIT_SET(hi2c->instance->CR1, I2C_CR1_START | I2C_CR1_ACK);
+
+	while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_SB));
+	hi2c->instance->DR = hi2c->slaveAddr;
+
+	while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_ADDR));
+	tmp = hi2c->instance->SR2;
+	UNUSED(tmp);
+
+	if (hi2c->sizeBuff == 1) {
+		BIT_CLEAR(hi2c->instance->CR1, I2C_CR1_ACK);
+		BIT_SET(hi2c->instance->CR1, I2C_CR1_STOP);
+	}
+
+	for (int i=0; i<hi2c->sizeBuff; i++) {
+		while (!BIT_GET(hi2c->instance->SR1, I2C_SR1_RXNE));
+		hi2c->buff[i] = hi2c->instance->DR;
+
+		if (i == hi2c->sizeBuff - 2) {
+			BIT_CLEAR(hi2c->instance->CR1, I2C_CR1_ACK);
+			BIT_SET(hi2c->instance->CR1, I2C_CR1_STOP);
+		}
+	}
+
+	return I2C_OK;
+}
+
+
+
+
+
+
