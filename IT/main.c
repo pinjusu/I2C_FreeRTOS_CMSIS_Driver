@@ -121,7 +121,9 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   //tskIDLE_PRIORITY=0.
-  xTaskCreate((TaskFunction_t)StartDefaultTask,(const portCHAR *)"I2C_Task",512, NULL,tskIDLE_PRIORITY+3,&defaultTaskHandle);
+  xTaskCreate((TaskFunction_t) StartDefaultTask,
+		  (const portCHAR *)"I2C_Task", 512, NULL, tskIDLE_PRIORITY + 3,
+		  &defaultTaskHandle);
   vTaskStartScheduler();
   /* USER CODE END RTOS_THREADS */
 
@@ -257,8 +259,7 @@ static void JS_I2C1_Init(void){
 	hi2c1.instance = I2C1;
 	hi2c1.clockSpeed = 400000;
 
-	if (I2C_Init(&hi2c1) != I2C_OK)
-	{
+	if (I2C_Init(&hi2c1, 1) != I2C_OK) {
 		Error_Handler();
 	}
 }
@@ -280,8 +281,8 @@ void StartDefaultTask(void const * argument)
   /* USER CODE BEGIN 5 */
 	uint8_t data[6] = {0};
 	int16_t acc[3] = {0};
-	const TickType_t xInterruptFrequency = pdMS_TO_TICKS( 500UL );
-	const TickType_t delay = pdMS_TO_TICKS( 1000UL );
+	const TickType_t xInterruptFrequency = pdMS_TO_TICKS(500UL);
+	const TickType_t delay = pdMS_TO_TICKS(1000UL);
 	char str[100];
 
 	debugPrint("Start tasks...\r\n");
@@ -315,8 +316,6 @@ void StartDefaultTask(void const * argument)
 			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
 		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
 		debugPrint(str);
-
-		debugPrint("SuSu is fat\r\n");
 
 		vTaskDelay(delay ? delay : 1);
 	}

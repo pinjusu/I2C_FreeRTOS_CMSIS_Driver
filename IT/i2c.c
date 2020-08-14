@@ -13,7 +13,7 @@ I2C_Handle *hi2c1Ptr = &hi2c1;
 char str[100];
 
 /* I2C Initial for 400KHz Fast Mode */
-I2C_State I2C_Init(I2C_Handle *hi2cPtr) {
+I2C_State I2C_Init(I2C_Handle *hi2cPtr, _Bool enableIT) {
 	uint32_t PCLK1;
 	uint32_t i2c_clk_freq;
 	uint32_t i2c_trise;
@@ -38,18 +38,18 @@ I2C_State I2C_Init(I2C_Handle *hi2cPtr) {
 	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF6|GPIO_CRL_MODE6);
 	BIT_SET(GPIOB->CRL, GPIO_CRL_CNF7|GPIO_CRL_MODE7);
 
+	if (enableIT) {
 	/* Interrupt Init*/
-
 	/* Sets the priority of a device specific interrupt or a processor exception.
 	 * IRQn: Interrupt number, you can check the IRQn in stm32f103xb.h .
 	 * priority: 0-15, 0: highest priority.
 	 */
-	NVIC_SetPriority(I2C1_EV_IRQn, 5);
-	NVIC_EnableIRQ(I2C1_EV_IRQn);
+		NVIC_SetPriority(I2C1_EV_IRQn, 5);
+		NVIC_EnableIRQ(I2C1_EV_IRQn);
 
 	//Enable interrupts, not really necessary since this is the default value.
-	__enable_irq();
-
+		__enable_irq();
+	}
 
 	/* CR1
 	 * bit 0: 0 (Disable the selected I2C peripheral.)
@@ -85,14 +85,15 @@ I2C_State I2C_Init(I2C_Handle *hi2cPtr) {
 	 * For Fm, Thigh=CCR*Tpclk1, Tlow=2*CCR*Tpclk1.
 	 */
 	i2c_ccr = ( (PCLK1 -1) / ( hi2cPtr->clockSpeed * 3) + 1 );
-	BIT_MODIFY(hi2cPtr->instance->CCR, i2c_ccr | I2C_CCR_FS, (I2C_CCR_FS | I2C_CCR_DUTY | I2C_CCR_CCR));
+	BIT_MODIFY(hi2cPtr->instance->CCR, i2c_ccr | I2C_CCR_FS,
+			(I2C_CCR_FS | I2C_CCR_DUTY | I2C_CCR_CCR));
 
 	/*CR1
 	 * bit 7: 0(Clock stretching enable,only for slave mode)
 	 * bit 6: 0(General call disable)
 	 */
-	BIT_CLEAR(hi2cPtr->instance->CR1,I2C_CR1_ENGC);
-	BIT_CLEAR(hi2cPtr->instance->CR1,I2C_CR1_NOSTRETCH);
+	BIT_CLEAR(hi2cPtr->instance->CR1, I2C_CR1_ENGC);
+	BIT_CLEAR(hi2cPtr->instance->CR1, I2C_CR1_NOSTRETCH);
 
 	/*ORA1
 	 * bit 15  : 0(ADDMode, 0 is 7-bit address for slave mode)
@@ -109,7 +110,7 @@ I2C_State I2C_Init(I2C_Handle *hi2cPtr) {
 	 * bit 7-1 : NONE(the dual address).
 	 * bit 0   : 0(disable dual addressing mode)
 	 */
-	BIT_CLEAR(hi2cPtr->instance->OAR2,I2C_OAR2_ENDUAL);
+	BIT_CLEAR(hi2cPtr->instance->OAR2, I2C_OAR2_ENDUAL);
 
 	/* CR1
 	 * bit 0: 1 (Peripheral enable.)
@@ -119,7 +120,9 @@ I2C_State I2C_Init(I2C_Handle *hi2cPtr) {
 	return I2C_OK;
 }
 
-I2C_State I2C_Write_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr, uint8_t regAddr, uint8_t *data, uint8_t dataSize) {
+I2C_State I2C_Write(I2C_Handle *hi2cPtr, uint8_t slaveAddr, uint8_t regAddr,
+		uint8_t *data, uint8_t dataSize, _Bool isRead) {
+	uint32_t tmp;
 
 	if (!hi2cPtr)
 		return I2C_ERR;
@@ -135,11 +138,101 @@ I2C_State I2C_Write_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr, uint8_t regAddr, 
 
 	hi2cPtr->slaveAddr = slaveAddr << 1;
 	hi2cPtr->regAddr = regAddr;
-	hi2cPtr->buff = data;
 	hi2cPtr->sizeBuff = dataSize;
-	hi2cPtr->currSizeBuff=0U;
-	hi2cPtr->RW=I2C_WRITE;
-	hi2cPtr->TransferOptions=I2C_NORMAL;
+
+	for (int i=0; i<dataSize; i++) {
+		hi2cPtr->buffPtr[i] = data[i];
+	}
+
+	//Generate a start condition and turn on ACKs
+	BIT_SET(I2C1->CR1, I2C_CR1_START | I2C_CR1_ACK);
+
+	while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_SB));
+	hi2cPtr->instance->DR = hi2cPtr->slaveAddr;
+
+	while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_ADDR));
+	tmp = hi2cPtr->instance->SR2;
+	UNUSED(tmp);
+	hi2cPtr->instance->DR = hi2cPtr->regAddr;
+
+	while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_TXE));
+
+	for (int i=0; i<hi2cPtr->sizeBuff; i++) {
+		hi2cPtr->instance->DR = hi2cPtr->buffPtr[i];
+		while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_TXE));
+	}
+
+	if (!isRead)
+		BIT_SET(hi2cPtr->instance->CR1, I2C_CR1_STOP);
+
+	return I2C_OK;
+}
+
+I2C_State I2C_Read(I2C_Handle *hi2cPtr, uint8_t slaveAddr, uint8_t regAddr,
+		uint8_t *data, uint8_t dataSize) {
+	uint32_t tmp;
+
+	if (!hi2cPtr || dataSize <= 0)
+		return I2C_ERR;
+
+	if (I2C_Write(hi2cPtr, slaveAddr, regAddr, NULL, 0, 1) == I2C_ERR)
+		return I2C_ERR;
+
+	hi2cPtr->slaveAddr = (slaveAddr << 1) + 1;
+	hi2cPtr->regAddr = regAddr;
+	hi2cPtr->sizeBuff = dataSize;
+	hi2cPtr->buffPtr = data;
+
+	//Generate a start condition and turn on ACKs
+	BIT_SET(hi2cPtr->instance->CR1, I2C_CR1_START | I2C_CR1_ACK);
+
+	while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_SB));
+	hi2cPtr->instance->DR = hi2cPtr->slaveAddr;
+
+	while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_ADDR));
+	tmp = hi2cPtr->instance->SR2;
+	UNUSED(tmp);
+
+	if (hi2cPtr->sizeBuff == 1) {
+		BIT_CLEAR(hi2cPtr->instance->CR1, I2C_CR1_ACK);
+		BIT_SET(hi2cPtr->instance->CR1, I2C_CR1_STOP);
+	}
+
+	for (int i=0; i<hi2cPtr->sizeBuff; i++) {
+		while (!BIT_GET(hi2cPtr->instance->SR1, I2C_SR1_RXNE));
+		hi2cPtr->buffPtr[i] = hi2cPtr->instance->DR;
+
+		if (i == hi2cPtr->sizeBuff - 2) {
+			BIT_CLEAR(hi2cPtr->instance->CR1, I2C_CR1_ACK);
+			BIT_SET(hi2cPtr->instance->CR1, I2C_CR1_STOP);
+		}
+	}
+
+	return I2C_OK;
+}
+
+I2C_State I2C_Write_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr,
+		uint8_t regAddr, uint8_t *data, uint8_t dataSize) {
+
+	if (!hi2cPtr)
+		return I2C_ERR;
+
+	for (int i=0; i<6; i++) {
+		if (!BIT_GET(hi2cPtr->instance->SR2, I2C_SR2_BUSY))
+			break;
+
+		if (i == 5) {
+			return I2C_ERR;
+		}
+	}
+
+	hi2cPtr->slaveAddr = slaveAddr << 1;
+	hi2cPtr->regAddr = regAddr;
+	hi2cPtr->buffPtr = data;
+	hi2cPtr->sizeBuff = dataSize;
+	hi2cPtr->currSizeBuff = 0U;
+	hi2cPtr->Mode = I2C_WRITE;
+	hi2cPtr->TransferOptions = I2C_NORMAL;
 
 	/* CR2
 	 * bit 10: 1(Buffer interrupt enable. When TxE=1 or RxNE=1, interrupt happen.)
@@ -153,7 +246,8 @@ I2C_State I2C_Write_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr, uint8_t regAddr, 
 	return I2C_OK;
 }
 
-I2C_State I2C_Read_IT(I2C_Handle *hi2cPtr,uint8_t slaveAddr, uint8_t regAddr, uint8_t *data, uint8_t dataSize) {
+I2C_State I2C_Read_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr,
+		uint8_t regAddr, uint8_t *data, uint8_t dataSize) {
 
 	if (!hi2cPtr || dataSize <= 0)
 		return I2C_ERR;
@@ -169,11 +263,11 @@ I2C_State I2C_Read_IT(I2C_Handle *hi2cPtr,uint8_t slaveAddr, uint8_t regAddr, ui
 
 	hi2cPtr->slaveAddr = slaveAddr << 1 ;
 	hi2cPtr->regAddr = regAddr;
-	hi2cPtr->buff = data;
+	hi2cPtr->buffPtr = data;
 	hi2cPtr->sizeBuff = dataSize;
-	hi2cPtr->currSizeBuff=0U;
-	hi2cPtr->RW=I2C_READ;
-	hi2cPtr->TransferOptions=I2C_WRITE_FIRST_READ;
+	hi2cPtr->currSizeBuff = 0U;
+	hi2cPtr->Mode = I2C_READ;
+	hi2cPtr->TransferOptions = I2C_WRITE_FIRST_READ;
 
 	/* CR2
 	 * bit 10: 1(Buffer interrupt enable. When TxE=1 or RxNE=1, interrupt happen.)
@@ -197,57 +291,42 @@ void I2C1_EV_IRQHandler(void) {
 				hi2c1Ptr->TransferOptions = I2C_READ_FIRST_AND_LAST_FRAME;
 
 			hi2c1Ptr->instance->DR = hi2c1Ptr->slaveAddr + 1;
-		}
-		else
+		} else
 			hi2c1Ptr->instance->DR = hi2c1Ptr->slaveAddr;
-	}
-
-	else if (BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_ADDR)) {
+	} else if (BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_ADDR)) {
 		tmp = hi2c1Ptr->instance->SR2;
 		UNUSED(tmp);
 
-		if(hi2c1Ptr->TransferOptions == I2C_READ_FIRST_AND_LAST_FRAME){
+		if (hi2c1Ptr->TransferOptions == I2C_READ_FIRST_AND_LAST_FRAME){
 			BIT_CLEAR(hi2c1Ptr->instance->CR1, I2C_CR1_ACK);
 			BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_STOP);
-		}
-		else if(hi2c1Ptr->TransferOptions == I2C_START_READ)
+		} else if (hi2c1Ptr->TransferOptions == I2C_START_READ)
 			hi2c1Ptr->TransferOptions = I2C_NORMAL;
 		else
 			hi2c1Ptr->instance->DR = hi2c1Ptr->regAddr;
-	}
-
-	else if (hi2c1Ptr->RW==I2C_WRITE){
-		if(BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_TXE)){
-			if(hi2c1Ptr->currSizeBuff==hi2c1Ptr->sizeBuff){
+	} else if (BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_TXE)) {
+		if (hi2c1Ptr->Mode == I2C_WRITE) {	// I2C write mode
+			if (hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff) {
 				BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_STOP);
-				BIT_CLEAR(hi2c1Ptr->instance->CR2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN |I2C_CR2_ITERREN );
+				BIT_CLEAR(hi2c1Ptr->instance->CR2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN |I2C_CR2_ITERREN);
 				vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
-				portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-			}
-			else
-				hi2c1Ptr->instance->DR = hi2c1Ptr->buff[hi2c1Ptr->currSizeBuff++];
+				portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
+			} else
+				hi2c1Ptr->instance->DR = hi2c1Ptr->buffPtr[hi2c1Ptr->currSizeBuff++];
+		} else if(hi2c1Ptr->TransferOptions == I2C_WRITE_FIRST_READ) {	// I2C read mode
+			hi2c1Ptr->TransferOptions = I2C_START_READ;
+			BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_START | I2C_CR1_ACK);
 		}
-	}
+	} else if (BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_RXNE)) {
+		hi2c1Ptr->buffPtr[hi2c1Ptr->currSizeBuff++] = hi2c1Ptr->instance->DR;
 
-	else {
-		if(BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_TXE)){
-			if(hi2c1Ptr->TransferOptions == I2C_WRITE_FIRST_READ){
-				hi2c1Ptr->TransferOptions = I2C_START_READ;
-				BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_START | I2C_CR1_ACK);
-			}
-		}
-		else if(BIT_GET(hi2c1Ptr->instance->SR1, I2C_SR1_RXNE)){
-			hi2c1Ptr->buff[hi2c1Ptr->currSizeBuff++] = hi2c1Ptr->instance->DR;
-
-			if (hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff - 1) {
-				BIT_CLEAR(hi2c1Ptr->instance->CR1, I2C_CR1_ACK);
-				BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_STOP);
-			} else if(hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff){
-				BIT_CLEAR(hi2c1Ptr->instance->CR2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN |I2C_CR2_ITERREN );
-				vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
-				portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
-			}
-
+		if (hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff - 1) {
+			BIT_CLEAR(hi2c1Ptr->instance->CR1, I2C_CR1_ACK);
+			BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_STOP);
+		} else if (hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff) {
+			BIT_CLEAR(hi2c1Ptr->instance->CR2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN |I2C_CR2_ITERREN );
+			vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 		}
 	}
 }
