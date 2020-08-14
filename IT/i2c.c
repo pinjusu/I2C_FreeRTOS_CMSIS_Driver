@@ -12,8 +12,6 @@ I2C_Handle *hi2c1Ptr = &hi2c1;
 
 char str[100];
 
-osThreadId BlockedI2CTask;
-
 /* I2C Initial for 400KHz Fast Mode */
 I2C_State I2C_Init(I2C_Handle *hi2cPtr) {
 	uint32_t PCLK1;

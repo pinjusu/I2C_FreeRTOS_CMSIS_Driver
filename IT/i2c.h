@@ -9,7 +9,8 @@
 #define INC_I2C_H_
 
 #include "stm32f1xx.h"
-#include "cmsis_os.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 #define BIT_GET(reg, bit)			((reg) & (bit))
 #define BIT_SET(reg, bit)			((reg) |= (bit))
@@ -56,7 +57,7 @@ typedef struct _I2C_Handle{
 	I2C_TransferOp	TransferOptions;
 } I2C_Handle;
 
-extern osThreadId defaultTaskHandle;
+extern TaskHandle_t defaultTaskHandle;
 
 /* I2C APIs */
 I2C_State I2C_Init(I2C_Handle *);

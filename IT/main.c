@@ -19,7 +19,6 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -45,10 +44,9 @@
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
-
-osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 I2C_Handle hi2c1;
+TaskHandle_t defaultTaskHandle;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -119,17 +117,14 @@ int main(void)
   /* add queues, ... */
   /* USER CODE END RTOS_QUEUES */
 
-  /* Create the thread(s) */
-  /* definition and creation of defaultTask */
-  osThreadDef(defaultTask, StartDefaultTask, osPriorityNormal, 0, 512);
-  defaultTaskHandle = osThreadCreate(osThread(defaultTask), NULL);
+
 
   /* USER CODE BEGIN RTOS_THREADS */
-  /* add threads, ... */
+  //tskIDLE_PRIORITY=0.
+  xTaskCreate((TaskFunction_t)StartDefaultTask,(const portCHAR *)"I2C_Task",512, NULL,tskIDLE_PRIORITY+3,&defaultTaskHandle);
+  vTaskStartScheduler();
   /* USER CODE END RTOS_THREADS */
 
-  /* Start scheduler */
-  osKernelStart();
 
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
@@ -286,6 +281,7 @@ void StartDefaultTask(void const * argument)
 	uint8_t data[6] = {0};
 	int16_t acc[3] = {0};
 	const TickType_t xInterruptFrequency = pdMS_TO_TICKS( 500UL );
+	const TickType_t delay = pdMS_TO_TICKS( 1000UL );
 	char str[100];
 
 	debugPrint("Start tasks...\r\n");
@@ -321,7 +317,8 @@ void StartDefaultTask(void const * argument)
 		debugPrint(str);
 
 		debugPrint("SuSu is fat\r\n");
-		osDelay(1000);
+
+		vTaskDelay(delay ? delay : 1);
 	}
   /* USER CODE END 5 */
 }
