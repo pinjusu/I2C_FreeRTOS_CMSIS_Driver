@@ -309,7 +309,7 @@ void I2C1_EV_IRQHandler(void) {
 			if (hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff) {
 				BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_STOP);
 				BIT_CLEAR(hi2c1Ptr->instance->CR2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN |I2C_CR2_ITERREN);
-				vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+				vTaskNotifyGiveFromISR(IMU_TaskHandle, &xHigherPriorityTaskWoken);
 				portYIELD_FROM_ISR(xHigherPriorityTaskWoken);
 			} else
 				hi2c1Ptr->instance->DR = hi2c1Ptr->buffPtr[hi2c1Ptr->currSizeBuff++];
@@ -325,7 +325,7 @@ void I2C1_EV_IRQHandler(void) {
 			BIT_SET(hi2c1Ptr->instance->CR1, I2C_CR1_STOP);
 		} else if (hi2c1Ptr->currSizeBuff == hi2c1Ptr->sizeBuff) {
 			BIT_CLEAR(hi2c1Ptr->instance->CR2, I2C_CR2_ITEVTEN | I2C_CR2_ITBUFEN |I2C_CR2_ITERREN );
-			vTaskNotifyGiveFromISR(defaultTaskHandle, &xHigherPriorityTaskWoken);
+			vTaskNotifyGiveFromISR(IMU_TaskHandle, &xHigherPriorityTaskWoken);
 			portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
 		}
 	}

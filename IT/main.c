@@ -49,19 +49,21 @@
 I2C_Handle hi2c1;
 UART_Handle huart1;
 UART_Handle huart2;
-TaskHandle_t defaultTaskHandle;
+TaskHandle_t IMU_TaskHandle;
+TaskHandle_t GPSR_TaskHandle;
 
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void StartDefaultTask(void const * argument);
+void IMU_Task(void const * argument);
+void GPSR_Task(void const * argument);
 
 /* USER CODE BEGIN PFP */
 static void JS_I2C1_Init(void);
 static void JS_UART1_Init(void);
 static void JS_UART2_Init(void);
-void debugPrint(char []);
+void debugPrint(char *);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -126,9 +128,13 @@ int main(void)
   /* definition and creation of defaultTask */
 
   /* USER CODE BEGIN RTOS_THREADS */
-  xTaskCreate((TaskFunction_t) StartDefaultTask,
-		  (const portCHAR *)"I2C_Task", 512, NULL, tskIDLE_PRIORITY + 3,
-		  &defaultTaskHandle);
+  xTaskCreate((TaskFunction_t) IMU_Task,
+  		(const portCHAR *)"IMU_Task", 512, NULL, tskIDLE_PRIORITY + 3,
+  		&IMU_TaskHandle);
+
+  xTaskCreate((TaskFunction_t) GPSR_Task,
+          (const portCHAR *)"GPSR_Task", 128, NULL, tskIDLE_PRIORITY + 3,
+          &GPSR_TaskHandle);
 
   vTaskStartScheduler();
   /* USER CODE END RTOS_THREADS */
@@ -219,24 +225,23 @@ void debugPrint(char *_out) {
 }
 /* USER CODE END 4 */
 
-/* USER CODE BEGIN Header_StartDefaultTask */
+/* USER CODE BEGIN IMU_Task */
 /**
-  * @brief  Function implementing the defaultTask thread.
+  * @brief  Function implementing the IMU_Task thread.
   * @param  argument: Not used
   * @retval None
   */
-/* USER CODE END Header_StartDefaultTask */
-void StartDefaultTask(void const * argument)
+/* USER CODE END IMU_Task */
+void IMU_Task(void const *argument)
 {
   /* USER CODE BEGIN 5 */
 	uint8_t data[6] = {0};
 	int16_t acc[3] = {0};
 	const TickType_t xInterruptFrequency = pdMS_TO_TICKS(500UL);
 	const TickType_t delay = pdMS_TO_TICKS(1000UL);
-	const TickType_t waitDelay = pdMS_TO_TICKS(1000UL);
 	char str[100];
 
-	debugPrint("Start tasks...\r\n");
+	debugPrint("Start IMU tasks...\r\n");
 
 	I2C_Read_IT(&hi2c1, 0x68, 0x75, data, 1);
 	CHECK_IT(xInterruptFrequency);
@@ -258,20 +263,35 @@ void StartDefaultTask(void const * argument)
 		debugPrint(str);
 	}
 
-	debugPrint("Start loop...\r\n");
+	debugPrint("Start IMU loop...\r\n");
   /* Infinite loop */
 	for(;;)
 	{
-		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
-		CHECK_IT(xInterruptFrequency);
-		for(int i=0;i<3;i++)
-			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
-		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
-		debugPrint(str);
+//		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
+//		CHECK_IT(xInterruptFrequency);
+//		for(int i=0;i<3;i++)
+//			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
+//		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
+//		debugPrint(str);
 
 		vTaskDelay(delay ? delay : 1);
 	}
   /* USER CODE END 5 */
+}
+
+void GPSR_Task(void const *argument) {
+	const TickType_t delay = pdMS_TO_TICKS(10UL);
+	const TickType_t waitDelay = pdMS_TO_TICKS(1000UL);
+	uint8_t data[1] = {0};
+
+	debugPrint("Start GPSR tasks...\r\n");
+	debugPrint("Start GPSR loop...\r\n");
+	for (;;) {
+		if (!UART_Read_IT(&huart1, data, waitDelay))
+			debugPrint(data);
+
+		vTaskDelay(delay ? delay : 1);
+	}
 }
 
 /**

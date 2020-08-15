@@ -55,7 +55,7 @@ typedef struct _I2C_Handle {
 	I2C_TransferOp	TransferOptions;
 } I2C_Handle;
 
-extern TaskHandle_t defaultTaskHandle;
+extern TaskHandle_t IMU_TaskHandle;
 
 /* I2C APIs */
 I2C_State I2C_Init(I2C_Handle *, _Bool);
