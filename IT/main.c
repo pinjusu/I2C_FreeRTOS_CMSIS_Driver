@@ -19,10 +19,12 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include "cmsis_os.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "i2c.h"
+#include "uart.h"
 #include "string.h"
 #include "stdio.h"
 /* USER CODE END Includes */
@@ -43,21 +45,24 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart1;
-UART_HandleTypeDef huart2;
+
+osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 I2C_Handle hi2c1;
+UART_Handle huart2;
 TaskHandle_t defaultTaskHandle;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
-static void MX_USART2_UART_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 static void JS_I2C1_Init(void);
+static void JS_UART2_Init(void);
 void debugPrint(char []);
 /* USER CODE END PFP */
 
@@ -95,9 +100,10 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_USART1_UART_Init();
-  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
   JS_I2C1_Init();
+  JS_UART2_Init();
+
   /* USER CODE END 2 */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -115,18 +121,21 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
+
   /* USER CODE END RTOS_QUEUES */
 
-
+  /* Create the thread(s) */
+  /* definition and creation of defaultTask */
 
   /* USER CODE BEGIN RTOS_THREADS */
-  //tskIDLE_PRIORITY=0.
   xTaskCreate((TaskFunction_t) StartDefaultTask,
 		  (const portCHAR *)"I2C_Task", 512, NULL, tskIDLE_PRIORITY + 3,
 		  &defaultTaskHandle);
+
   vTaskStartScheduler();
   /* USER CODE END RTOS_THREADS */
 
+  /* Start scheduler */
 
   /* We should never get here as control is now taken by the scheduler */
   /* Infinite loop */
@@ -209,39 +218,6 @@ static void MX_USART1_UART_Init(void)
 }
 
 /**
-  * @brief USART2 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2.Instance = USART2;
-  huart2.Init.BaudRate = 9600;
-  huart2.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2.Init.StopBits = UART_STOPBITS_1;
-  huart2.Init.Parity = UART_PARITY_NONE;
-  huart2.Init.Mode = UART_MODE_TX_RX;
-  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
-
-/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -251,11 +227,12 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
 }
 
 /* USER CODE BEGIN 4 */
-static void JS_I2C1_Init(void){
+static void JS_I2C1_Init(void) {
 	hi2c1.instance = I2C1;
 	hi2c1.clockSpeed = 400000;
 
@@ -264,8 +241,19 @@ static void JS_I2C1_Init(void){
 	}
 }
 
-void debugPrint(char _out[]){
-	HAL_UART_Transmit(&huart2, (uint8_t *) _out, strlen(_out), 1000);
+static void JS_UART2_Init(void) {
+	huart2.instance = USART2;
+	huart2.baudRate = 9600;
+	huart2.lock = UART_UNLOCKED;
+	huart2.enableIT = 1;
+
+	if (UART_Init(&huart2) != UART_OK) {
+		Error_Handler();
+	}
+}
+
+void debugPrint(char _out[]) {
+	UART_Write_IT(&huart2, (uint8_t *) _out, strlen(_out));
 }
 /* USER CODE END 4 */
 
@@ -283,41 +271,48 @@ void StartDefaultTask(void const * argument)
 	int16_t acc[3] = {0};
 	const TickType_t xInterruptFrequency = pdMS_TO_TICKS(500UL);
 	const TickType_t delay = pdMS_TO_TICKS(1000UL);
+	const TickType_t waitDelay = pdMS_TO_TICKS(1000UL);
 	char str[100];
 
 	debugPrint("Start tasks...\r\n");
-	I2C_Read_IT(&hi2c1, 0x68, 0x75, data, 1);
-	CHECK_IT(xInterruptFrequency);
-	if (data[0] == 113) {
-		data[0] = 0;
-		I2C_Write_IT(&hi2c1, 0x68, 0x6b, data, 1);
-		CHECK_IT(xInterruptFrequency);
-		data[0] = 0x07;
-		I2C_Write_IT(&hi2c1, 0x68, 0x19, data, 1);
-		CHECK_IT(xInterruptFrequency);
-		data[0] = 0;
-		I2C_Write_IT(&hi2c1, 0x68, 0x1c, data, 1);
-		CHECK_IT(xInterruptFrequency);
-		data[0] = 0;
-		I2C_Write_IT(&hi2c1, 0x68, 0x1b, data, 1);
-		CHECK_IT(xInterruptFrequency);
-	} else {
-		sprintf(str,"Wrong who_am_i number: %d\r\n",data[0]);
-		debugPrint(str);
-	}
 
-	debugPrint("Start loop...\r\n");
+//	I2C_Read_IT(&hi2c1, 0x68, 0x75, data, 1);
+//	CHECK_IT(xInterruptFrequency);
+//	if (data[0] == 113) {
+//		data[0] = 0;
+//		I2C_Write_IT(&hi2c1, 0x68, 0x6b, data, 1);
+//		CHECK_IT(xInterruptFrequency);
+//		data[0] = 0x07;
+//		I2C_Write_IT(&hi2c1, 0x68, 0x19, data, 1);
+//		CHECK_IT(xInterruptFrequency);
+//		data[0] = 0;
+//		I2C_Write_IT(&hi2c1, 0x68, 0x1c, data, 1);
+//		CHECK_IT(xInterruptFrequency);
+//		data[0] = 0;
+//		I2C_Write_IT(&hi2c1, 0x68, 0x1b, data, 1);
+//		CHECK_IT(xInterruptFrequency);
+//	} else {
+//		sprintf(str,"Wrong who_am_i number: %d\r\n",data[0]);
+//		debugPrint(str);
+//	}
+//
+//	debugPrint("Start loop...\r\n");
   /* Infinite loop */
 	for(;;)
 	{
-		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
-		CHECK_IT(xInterruptFrequency);
-		for(int i=0;i<3;i++)
-			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
-		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
-		debugPrint(str);
+//		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
+//		CHECK_IT(xInterruptFrequency);
+//		for(int i=0;i<3;i++)
+//			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
+//		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
+//		debugPrint(str);
 
-		vTaskDelay(delay ? delay : 1);
+		if (!UART_Read_IT(&huart2, data, waitDelay)) {
+			debugPrint(data[0]);
+		}
+
+		debugPrint("looping\r\n");
+//		vTaskDelay(delay ? delay : 1);
 	}
   /* USER CODE END 5 */
 }
