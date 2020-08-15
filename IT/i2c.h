@@ -65,6 +65,6 @@ I2C_State I2C_Write_IT(I2C_Handle *, uint8_t, uint8_t, uint8_t *, uint8_t);
 I2C_State I2C_Read_IT(I2C_Handle *, uint8_t, uint8_t, uint8_t *, uint8_t);
 void I2C1_EV_IRQHandler(void);
 
-extern void debugPrint(char []);
+extern void debugPrint(char *);
 
 #endif /* INC_I2C_H_ */

@@ -44,11 +44,10 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-UART_HandleTypeDef huart1;
 
-osThreadId defaultTaskHandle;
 /* USER CODE BEGIN PV */
 I2C_Handle hi2c1;
+UART_Handle huart1;
 UART_Handle huart2;
 TaskHandle_t defaultTaskHandle;
 
@@ -56,12 +55,11 @@ TaskHandle_t defaultTaskHandle;
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_GPIO_Init(void);
-static void MX_USART1_UART_Init(void);
 void StartDefaultTask(void const * argument);
 
 /* USER CODE BEGIN PFP */
 static void JS_I2C1_Init(void);
+static void JS_UART1_Init(void);
 static void JS_UART2_Init(void);
 void debugPrint(char []);
 /* USER CODE END PFP */
@@ -98,10 +96,10 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_USART1_UART_Init();
+
   /* USER CODE BEGIN 2 */
   JS_I2C1_Init();
+  JS_UART1_Init();
   JS_UART2_Init();
 
   /* USER CODE END 2 */
@@ -184,53 +182,6 @@ void SystemClock_Config(void)
   }
 }
 
-/**
-  * @brief USART1 Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_USART1_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART1_Init 0 */
-
-  /* USER CODE END USART1_Init 0 */
-
-  /* USER CODE BEGIN USART1_Init 1 */
-
-  /* USER CODE END USART1_Init 1 */
-  huart1.Instance = USART1;
-  huart1.Init.BaudRate = 9600;
-  huart1.Init.WordLength = UART_WORDLENGTH_8B;
-  huart1.Init.StopBits = UART_STOPBITS_1;
-  huart1.Init.Parity = UART_PARITY_NONE;
-  huart1.Init.Mode = UART_MODE_TX_RX;
-  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart1) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART1_Init 2 */
-
-  /* USER CODE END USART1_Init 2 */
-
-}
-
-/**
-  * @brief GPIO Initialization Function
-  * @param None
-  * @retval None
-  */
-static void MX_GPIO_Init(void)
-{
-
-  /* GPIO Ports Clock Enable */
-  __HAL_RCC_GPIOA_CLK_ENABLE();
-  __HAL_RCC_GPIOB_CLK_ENABLE();
-
-}
-
 /* USER CODE BEGIN 4 */
 static void JS_I2C1_Init(void) {
 	hi2c1.instance = I2C1;
@@ -239,6 +190,17 @@ static void JS_I2C1_Init(void) {
 	if (I2C_Init(&hi2c1, 1) != I2C_OK) {
 		Error_Handler();
 	}
+}
+
+static void JS_UART1_Init(void) {
+   huart1.instance = USART1;
+   huart1.baudRate = 9600;
+   huart1.lock = UART_UNLOCKED;
+   huart1.enableIT = 1;
+
+   if (UART_Init(&huart1) != UART_OK) {
+      Error_Handler();
+   }
 }
 
 static void JS_UART2_Init(void) {
@@ -252,7 +214,7 @@ static void JS_UART2_Init(void) {
 	}
 }
 
-void debugPrint(char _out[]) {
+void debugPrint(char *_out) {
 	UART_Write_IT(&huart2, (uint8_t *) _out, strlen(_out));
 }
 /* USER CODE END 4 */
@@ -276,43 +238,38 @@ void StartDefaultTask(void const * argument)
 
 	debugPrint("Start tasks...\r\n");
 
-//	I2C_Read_IT(&hi2c1, 0x68, 0x75, data, 1);
-//	CHECK_IT(xInterruptFrequency);
-//	if (data[0] == 113) {
-//		data[0] = 0;
-//		I2C_Write_IT(&hi2c1, 0x68, 0x6b, data, 1);
-//		CHECK_IT(xInterruptFrequency);
-//		data[0] = 0x07;
-//		I2C_Write_IT(&hi2c1, 0x68, 0x19, data, 1);
-//		CHECK_IT(xInterruptFrequency);
-//		data[0] = 0;
-//		I2C_Write_IT(&hi2c1, 0x68, 0x1c, data, 1);
-//		CHECK_IT(xInterruptFrequency);
-//		data[0] = 0;
-//		I2C_Write_IT(&hi2c1, 0x68, 0x1b, data, 1);
-//		CHECK_IT(xInterruptFrequency);
-//	} else {
-//		sprintf(str,"Wrong who_am_i number: %d\r\n",data[0]);
-//		debugPrint(str);
-//	}
-//
-//	debugPrint("Start loop...\r\n");
+	I2C_Read_IT(&hi2c1, 0x68, 0x75, data, 1);
+	CHECK_IT(xInterruptFrequency);
+	if (data[0] == 113) {
+		data[0] = 0;
+		I2C_Write_IT(&hi2c1, 0x68, 0x6b, data, 1);
+		CHECK_IT(xInterruptFrequency);
+		data[0] = 0x07;
+		I2C_Write_IT(&hi2c1, 0x68, 0x19, data, 1);
+		CHECK_IT(xInterruptFrequency);
+		data[0] = 0;
+		I2C_Write_IT(&hi2c1, 0x68, 0x1c, data, 1);
+		CHECK_IT(xInterruptFrequency);
+		data[0] = 0;
+		I2C_Write_IT(&hi2c1, 0x68, 0x1b, data, 1);
+		CHECK_IT(xInterruptFrequency);
+	} else {
+		sprintf(str,"Wrong who_am_i number: %d\r\n",data[0]);
+		debugPrint(str);
+	}
+
+	debugPrint("Start loop...\r\n");
   /* Infinite loop */
 	for(;;)
 	{
-//		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
-//		CHECK_IT(xInterruptFrequency);
-//		for(int i=0;i<3;i++)
-//			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
-//		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
-//		debugPrint(str);
+		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
+		CHECK_IT(xInterruptFrequency);
+		for(int i=0;i<3;i++)
+			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
+		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
+		debugPrint(str);
 
-		if (!UART_Read_IT(&huart2, data, waitDelay)) {
-			debugPrint(data[0]);
-		}
-
-		debugPrint("looping\r\n");
-//		vTaskDelay(delay ? delay : 1);
+		vTaskDelay(delay ? delay : 1);
 	}
   /* USER CODE END 5 */
 }

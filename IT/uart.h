@@ -61,13 +61,14 @@ typedef struct UART_Handle {
 } UART_Handle;
 
 extern TaskHandle_t defaultTaskHandle;
-extern void debugPrint(char []);
+extern void debugPrint(char *);
 
 UART_State UART_Init(UART_Handle *);
 UART_State UART_Write(UART_Handle *, uint8_t *, uint16_t);
 UART_State UART_Read(UART_Handle *, uint8_t *, uint32_t);
 UART_State UART_Write_IT(UART_Handle *, uint8_t *, uint16_t);
 UART_State UART_Read_IT(UART_Handle *, uint8_t *, TickType_t);
+void USART1_IRQHandler(void);
 void USART2_IRQHandler(void);
 
 #endif /* SRC_UART_H_ */

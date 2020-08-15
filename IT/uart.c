@@ -6,11 +6,69 @@
  */
 #include "uart.h"
 
+extern UART_Handle huart1;
+UART_Handle *huart1Ptr = &huart1;
 extern UART_Handle huart2;
 UART_Handle *huart2Ptr = &huart2;
 
 static StaticQueue_t rxQueue, txQueue;
 static uint8_t rxQueueBuff[UART_BUFFER_SIZE], txQueueBuff[UART_BUFFER_SIZE];
+
+static void GPIO_Init(UART_Handle *uartPtr) {
+   if (!uartPtr)
+      return;
+
+   /* PA9     ------> USART1_TX
+    * PA10    ------> USART1_RX
+    *
+    * PA2     ------> USART2_TX
+    * PA3     ------> USART2_RX
+    * */
+   if (uartPtr->instance == USART1) {
+      // Enable IO Port A and UART2 clocks
+      BIT_SET(RCC->APB2ENR, RCC_APB2ENR_USART1EN);
+      BIT_SET(RCC->APB2ENR, RCC_APB2ENR_IOPAEN);
+
+      /* CRL: PA2
+       * CNFy[1:0]=10 (push-pull,50MHz)
+       * MODEy[1:0]=11 (output mode)
+       * CRL: PA3
+       * MODEy[1:0]=00 (input mode)
+       */
+      BIT_CLEAR(GPIOA->CRH, GPIO_CRH_CNF9);
+      BIT_SET(GPIOA->CRH, GPIO_CRH_CNF9_1|GPIO_CRH_MODE9);
+      BIT_CLEAR(GPIOA->CRH, GPIO_CRH_MODE10);
+
+   } else if (uartPtr->instance == USART2) {
+      // Enable IO Port A and UART2 clocks
+      BIT_SET(RCC->APB1ENR, RCC_APB1ENR_USART2EN);
+      BIT_SET(RCC->APB2ENR, RCC_APB2ENR_IOPAEN);
+
+      /* CRL: PA2
+       * CNFy[1:0]=10 (push-pull,50MHz)
+       * MODEy[1:0]=11 (output mode)
+       * CRL: PA3
+       * MODEy[1:0]=00 (input mode)
+       */
+      BIT_CLEAR(GPIOA->CRL, GPIO_CRL_CNF2);
+      BIT_SET(GPIOA->CRL, GPIO_CRL_CNF2_1|GPIO_CRL_MODE2);
+      BIT_CLEAR(GPIOA->CRL, GPIO_CRL_MODE3);
+   }
+}
+
+static void NVIC_Init(UART_Handle *uartPtr) {
+   if (!uartPtr)
+      return;
+
+   if (uartPtr->instance == USART1) {
+      NVIC_SetPriority(USART1_IRQn, 6);
+      NVIC_EnableIRQ(USART1_IRQn);
+
+   } else if (uartPtr->instance == USART2) {
+      NVIC_SetPriority(USART2_IRQn, 6);
+      NVIC_EnableIRQ(USART2_IRQn);
+   }
+}
 
 UART_State UART_Init(UART_Handle *uartPtr) {
 	uint32_t PCLK1;
@@ -20,22 +78,7 @@ UART_State UART_Init(UART_Handle *uartPtr) {
 	if (!uartPtr)
 			return UART_ERR;
 
-	/** USART2 GPIO Configuration
-		PA2     ------> USART2_TX
-		PA3     ------> USART2_RX
-	*/
-	// Enable IO Port A and UART2 clocks
-	BIT_SET(RCC->APB1ENR, RCC_APB1ENR_USART2EN);
-	BIT_SET(RCC->APB2ENR, RCC_APB2ENR_IOPAEN);
-	/* CRL: PA2
-	 * CNFy[1:0]=10 (push-pull,50MHz)
-	 * MODEy[1:0]=11 (output mode)
-	 * CRL: PA3
-	 * MODEy[1:0]=00 (input mode)
-	 */
-	BIT_CLEAR(GPIOA->CRL, GPIO_CRL_CNF2);
-	BIT_SET(GPIOA->CRL, GPIO_CRL_CNF2_1|GPIO_CRL_MODE2);
-	BIT_CLEAR(GPIOA->CRL, GPIO_CRL_MODE3);
+	GPIO_Init(uartPtr);
 
 	/* Disable UART */
 	BIT_CLEAR(uartPtr->instance->CR1, USART_CR1_UE);
@@ -73,8 +116,7 @@ UART_State UART_Init(UART_Handle *uartPtr) {
 
 	/* Interrupt UART Enable Procedure */
 	if (uartPtr->enableIT) {
-		NVIC_SetPriority(USART2_IRQn, 5);
-		NVIC_EnableIRQ(USART2_IRQn);
+		NVIC_Init(uartPtr);
 
 		uartPtr->txQueueHandle = xQueueCreateStatic(
 				UART_BUFFER_SIZE, sizeof(uint8_t), txQueueBuff, &txQueue);
@@ -170,6 +212,26 @@ UART_State UART_Read_IT(UART_Handle *uartPtr, uint8_t *dataPtr, TickType_t delay
 	UART_UNLOCK(uartPtr);
 
 	return UART_OK;
+}
+
+void USART1_IRQHandler(void) {
+   BaseType_t rxWakeup = pdFALSE;
+   BaseType_t txWakeup = pdFALSE;
+   uint8_t tmp;
+
+   if (BIT_GET(huart1Ptr->instance->SR, USART_SR_RXNE)) {
+      tmp = huart1Ptr->instance->DR;
+      xQueueSendFromISR(huart1Ptr->rxQueueHandle, &tmp, &rxWakeup);
+   }
+
+   if (BIT_GET(huart1Ptr->instance->SR, USART_SR_TXE)) {
+      if (xQueueReceiveFromISR(huart1Ptr->txQueueHandle, &tmp, &txWakeup))
+         huart1Ptr->instance->DR = tmp;
+      else
+         BIT_CLEAR(huart1Ptr->instance->CR1, USART_CR1_TXEIE);
+   }
+
+   portYIELD_FROM_ISR(rxWakeup || txWakeup);
 }
 
 void USART2_IRQHandler(void) {
