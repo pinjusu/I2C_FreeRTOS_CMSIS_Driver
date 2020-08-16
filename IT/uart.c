@@ -146,11 +146,11 @@ UART_State UART_Write(UART_Handle *uartPtr, uint8_t *dataPtr, uint16_t sizeData)
 
 	while (uartPtr->sizeBuff--)
 	{
-		while(BIT_GET(uartPtr->instance->SR, UART_FLAG_TXE) == 0);
+		while(BIT_GET(uartPtr->instance->SR, USART_SR_TXE) == 0);
 		uartPtr->instance->DR = (*(uartPtr->buffPtr)++ & (uint8_t)0xFF);
 	}
 
-	while(BIT_GET(uartPtr->instance->SR, UART_FLAG_TC) == 0);
+	while(BIT_GET(uartPtr->instance->SR, USART_SR_TC) == 0);
 
 	UART_UNLOCK(uartPtr);
 
@@ -167,7 +167,7 @@ UART_State UART_Read(UART_Handle *uartPtr, uint8_t *dataPtr, uint32_t sizeData) 
 	uartPtr->sizeBuff = sizeData;
 
 	while (uartPtr->sizeBuff--) {
-		while(BIT_GET(uartPtr->instance->SR, UART_FLAG_RXNE) == 0);
+		while(BIT_GET(uartPtr->instance->SR, USART_SR_RXNE) == 0);
 		*(uartPtr->buffPtr)++ = (uint8_t)(uartPtr->instance->DR & (uint8_t)0x00FF);
 	}
 
