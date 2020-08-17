@@ -12,6 +12,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "queue.h"
+#include "semphr.h"
 
 
 #define UART_BUFFER_SIZE			128
@@ -64,7 +65,6 @@ typedef struct UART_Handle {
 
 } UART_Handle;
 
-extern TaskHandle_t IMU_TaskHandle;
 extern void debugPrint(char *);
 
 UART_State UART_Init(UART_Handle *);

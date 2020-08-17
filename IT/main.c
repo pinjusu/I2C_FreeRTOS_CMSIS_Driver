@@ -84,8 +84,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  //HAL_Init();
-	JS_Init();
+  //JS_Init();
+	HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -130,12 +130,12 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   xTaskCreate((TaskFunction_t) IMU_Task,
-  		(const portCHAR *)"IMU_Task", 128, NULL, tskIDLE_PRIORITY + 3,
+  		(const portCHAR *)"IMU_Task", 256, NULL, tskIDLE_PRIORITY + 3,
   		&IMU_TaskHandle);
 
   xTaskCreate((TaskFunction_t) GPSR_Task,
-          (const portCHAR *)"GPSR_Task", 512, NULL, tskIDLE_PRIORITY + 3,
-          &GPSR_TaskHandle);
+        (const portCHAR *)"GPSR_Task", 256, NULL, tskIDLE_PRIORITY + 3,
+		&GPSR_TaskHandle);
 
   vTaskStartScheduler();
   /* USER CODE END RTOS_THREADS */
@@ -258,7 +258,7 @@ static void JS_UART2_Init(void) {
 }
 
 void debugPrint(char *_out) {
-	UART_Write_IT(&huart2, (uint8_t *) _out, strlen(_out));
+	UART_Write(&huart2, (uint8_t *) _out, strlen(_out));
 }
 /* USER CODE END 4 */
 
@@ -304,12 +304,12 @@ void IMU_Task(void const *argument)
   /* Infinite loop */
 	for(;;)
 	{
-//		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
-//		CHECK_IT(xInterruptFrequency);
-//		for(int i=0;i<3;i++)
-//			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
-//		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
-//		debugPrint(str);
+		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
+		CHECK_IT(xInterruptFrequency);
+		for(int i=0;i<3;i++)
+			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
+		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
+		debugPrint(str);
 
 		vTaskDelay(delay ? delay : 1);
 	}
@@ -329,7 +329,8 @@ struct GPS_data{
 	char msl_units;
 	float dec_longitude;
 	float dec_latitude;
-
+	char gll_status;
+	char gps_mode;
 };
 
 float GPS_nmea_to_dec(float deg_coord, char nsew) {
@@ -345,56 +346,61 @@ float GPS_nmea_to_dec(float deg_coord, char nsew) {
 
 void GPSR_dataParse(char *data){
 	char str[100];
-	debugPrint(data);
-	debugPrint("\r\n");
-	if(!strncmp(data, "$GPGGA", 6)){
-		debugPrint("GOT\r\n");
-		int a=sscanf(data, "$GPGGA,%c,%c,%c,%f,%c,%d,%d,%f,%f,%c",
-				&GPS.ew, &GPS.ew, &GPS.ns,
-				&GPS.nmea_longitude, &GPS.ew, &GPS.lock, &GPS.satelites,
-				&GPS.hdop, &GPS.msl_altitude, &GPS.msl_units);
-		sprintf(str,"cnt: %d\r\n",a);
-		debugPrint(str);
-
-			/*GPS.dec_latitude = GPS_nmea_to_dec(GPS.nmea_latitude, GPS.ns);
-			GPS.dec_longitude = GPS_nmea_to_dec(GPS.nmea_longitude, GPS.ew);
-			sprintf(str,"longitude: %f latitude: %f\r\n",
-					GPS.dec_longitude, GPS.dec_latitude);
-			debugPrint(str);*/
-		return;
-	}
-
 	//debugPrint(data);
 	//debugPrint("\r\n");
-	/*if(!strncmp(data, "$GPTXT", 5))
-		debugPrint("Got YOUUUU\r\n");*/
+//	if (!strncmp(data, "$GPGGA", 6)) {
+//		if(sscanf(data, "$GPGGA,%f,%f,%c,%f,%c,%d,%d,%f,%f,%c",
+//				&GPS.utc_time, &GPS.nmea_latitude, &GPS.ns,
+//				&GPS.nmea_longitude, &GPS.ew, &GPS.lock, &GPS.satelites,
+//				&GPS.hdop, &GPS.msl_altitude, &GPS.msl_units) >= 5){
+//			memset(str,0, sizeof(str));
+//			sprintf(str,"time: %f lat: %f ns: %c long: %f ew: %c lock: %d\r\n",
+//					GPS.utc_time, GPS.nmea_latitude, GPS.ns,
+//					GPS.nmea_longitude, GPS.ew, GPS.lock);
+//			debugPrint(str);
+//		}
+//	} else
 
+	if (!strncmp(data, "$GPGLL", 6)) {
+		if(sscanf(data, "$GPGLL,%f,%c,%f,%c,%f,%c,%c", &GPS.nmea_latitude,
+			&GPS.ns, &GPS.nmea_longitude, &GPS.ew, &GPS.utc_time,
+			&GPS.gll_status, &GPS.gps_mode) >= 6) {
+			//sprintf(str,"lat: %.5f ns: %c long: %.5f ew: %c time: %f dataState: %c mode: %c\r\n",
+					//GPS.nmea_latitude, GPS.ns, GPS.nmea_longitude,
+					//GPS.ew, GPS.utc_time, GPS.gll_status, GPS.gps_mode);
+			//debugPrint(str);
+			memset(str,0, sizeof(str));
+			sprintf(str, "Lat: %f ,Long: %f\r\r\n",
+					GPS_nmea_to_dec(GPS.nmea_latitude, GPS.ns),
+					GPS_nmea_to_dec(GPS.nmea_longitude, GPS.ew));
+			debugPrint(str);
+		}
+	}
 }
 void GPSR_Task(void const *argument) {
-	const TickType_t delay = pdMS_TO_TICKS(10UL);
+	const TickType_t delay = pdMS_TO_TICKS(500UL);
 	const TickType_t waitDelay = pdMS_TO_TICKS(1000UL);
 	uint8_t data[100] = {0};
 	uint16_t dataIdx = 0;
 
 	debugPrint("Start GPSR tasks...\r\n");
 	debugPrint("Start GPSR loop...\r\n");
-	for (;;) {
-		debugPrint("line\r\n");
-		/*if (!UART_Read_IT(&huart1, data + dataIdx, waitDelay)){
+	//for (;;)
+	//{
+		//if (!UART_Read_IT(&huart1, data + dataIdx, waitDelay)){
 			//debugPrint(data + dataIdx);
-			if(data[dataIdx] == '\n'){
-				GPSR_dataParse((char *)data);
+			//if(data[dataIdx] == '\n'){
+				//GPSR_dataParse((char *)data);
 
-				dataIdx = 0;
-				memset(data, 0, sizeof(data));
-			}
-			else
-				dataIdx++;
+				//dataIdx = 0;
+				//memset(data, 0, sizeof(data));
+			//}
+			//else
+				//dataIdx++;
+		//}
 
-		}*/
-
-		vTaskDelay(delay ? delay : 1);
-	}
+		//vTaskDelay(delay ? delay : 1);
+	//}
 }
 
 /**

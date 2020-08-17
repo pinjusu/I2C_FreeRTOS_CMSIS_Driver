@@ -11,8 +11,10 @@ UART_Handle *huart1Ptr = &huart1;
 extern UART_Handle huart2;
 UART_Handle *huart2Ptr = &huart2;
 
+
 static StaticQueue_t rxQueue, txQueue;
 static uint8_t rxQueueBuff[UART_BUFFER_SIZE], txQueueBuff[UART_BUFFER_SIZE];
+
 
 static void GPIO_Init(UART_Handle *uartPtr) {
    if (!uartPtr)
@@ -126,6 +128,7 @@ UART_State UART_Init(UART_Handle *uartPtr) {
 		if (!uartPtr->txQueueHandle || !uartPtr->rxQueueHandle)
 			return UART_ERR;
 
+
 		BIT_SET(uartPtr->instance->CR1, USART_CR1_RXNEIE);
 	}
 
@@ -176,8 +179,8 @@ UART_State UART_Read(UART_Handle *uartPtr, uint8_t *dataPtr, uint32_t sizeData) 
 	return UART_OK;
 }
 
+
 UART_State UART_Write_IT(UART_Handle *uartPtr, uint8_t *dataPtr, uint16_t sizeData) {
-	//const TickType_t xInterruptFrequency = pdMS_TO_TICKS(500UL);
 
 	if (!uartPtr || !dataPtr || !sizeData)
 			return UART_ERR;
@@ -191,8 +194,8 @@ UART_State UART_Write_IT(UART_Handle *uartPtr, uint8_t *dataPtr, uint16_t sizeDa
 	for (int i=0; i<uartPtr->sizeBuff; i++) {
 		xQueueSend(uartPtr->txQueueHandle, uartPtr->buffPtr + i, portMAX_DELAY);
 		BIT_SET(uartPtr->instance->CR1, USART_CR1_TXEIE);
-		//CHECK_IT(xInterruptFrequency);
 	}
+
 
 	UART_UNLOCK(uartPtr);
 
@@ -239,7 +242,6 @@ void USART1_IRQHandler(void) {
 void USART2_IRQHandler(void) {
 	BaseType_t rxWakeup = pdFALSE;
 	BaseType_t txWakeup = pdFALSE;
-	//BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 	uint8_t tmp;
 
 	if (BIT_GET(huart2Ptr->instance->SR, USART_SR_RXNE)) {
@@ -250,11 +252,8 @@ void USART2_IRQHandler(void) {
 	if (BIT_GET(huart2Ptr->instance->SR, USART_SR_TXE)) {
 		if (xQueueReceiveFromISR(huart2Ptr->txQueueHandle, &tmp, &txWakeup))
 			huart2Ptr->instance->DR = tmp;
-		else{
+		else
 			BIT_CLEAR(huart2Ptr->instance->CR1, USART_CR1_TXEIE);
-
-			//vTaskNotifyGiveFromISR(IMU_TaskHandle, &xHigherPriorityTaskWoken);
-		}
 	}
 
 	portYIELD_FROM_ISR(rxWakeup || txWakeup);
