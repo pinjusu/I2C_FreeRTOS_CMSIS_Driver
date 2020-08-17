@@ -39,7 +39,7 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-
+#define  TICK_INT_PRIORITY      0U    /*tick interrupt priority (lowest by default)*/
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
@@ -59,6 +59,7 @@ void IMU_Task(void const * argument);
 void GPSR_Task(void const * argument);
 
 /* USER CODE BEGIN PFP */
+void JS_Init(void);
 static void JS_I2C1_Init(void);
 static void JS_UART1_Init(void);
 static void JS_UART2_Init(void);
@@ -83,7 +84,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
+  //HAL_Init();
+	JS_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -128,11 +130,11 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_THREADS */
   xTaskCreate((TaskFunction_t) IMU_Task,
-  		(const portCHAR *)"IMU_Task", 512, NULL, tskIDLE_PRIORITY + 3,
+  		(const portCHAR *)"IMU_Task", 128, NULL, tskIDLE_PRIORITY + 3,
   		&IMU_TaskHandle);
 
   xTaskCreate((TaskFunction_t) GPSR_Task,
-          (const portCHAR *)"GPSR_Task", 128, NULL, tskIDLE_PRIORITY + 3,
+          (const portCHAR *)"GPSR_Task", 512, NULL, tskIDLE_PRIORITY + 3,
           &GPSR_TaskHandle);
 
   vTaskStartScheduler();
@@ -188,6 +190,42 @@ void SystemClock_Config(void)
 }
 
 /* USER CODE BEGIN 4 */
+void JS_Init(void){
+	/* Enable the FLASH prefetch buffer.
+	 * FLASH_ACR (Flash Access Control Register)
+	 * bit 4: Prefetch Buffer Enable
+	 */
+	SET_BIT(FLASH->ACR,FLASH_ACR_PRFTBE);
+
+	/*4 bits for pre-emption priority
+	 *0 bits for subpriority
+	 */
+	NVIC_SetPriorityGrouping(0x00000003U);
+
+	/*
+	 * Initializes the System Timer and its interrupt, and starts the System Tick Timer.
+	 * Counter is in free running mode to generate periodic interrupts.
+	 * \param [in]  ticks  Number of ticks between two interrupts.
+	 */
+	SysTick_Config(SystemCoreClock / 1000U);
+
+	//Reads the priority grouping field from the NVIC Interrupt Controller.
+	uint32_t prioritygroup = NVIC_GetPriorityGrouping();
+
+	/* NVIC_SetPriority: Sets the priority of an interrupt.
+	 * NVIC_EncodePriority: Encodes the priority for an interrupt with the given priority group,
+     * preemptive priority value, and subpriority value.
+	 */
+	NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
+
+	//Alternate Function I/O clock enable
+	SET_BIT(RCC->APB2ENR, RCC_APB2ENR_AFIOEN);
+
+	//Power interface clock enable
+	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_PWREN);
+
+
+}
 static void JS_I2C1_Init(void) {
 	hi2c1.instance = I2C1;
 	hi2c1.clockSpeed = 400000;
@@ -277,17 +315,83 @@ void IMU_Task(void const *argument)
 	}
   /* USER CODE END 5 */
 }
+struct GPS_data GPS;
+struct GPS_data{
+	float utc_time;
+	float nmea_latitude;
+	char ns;
+	float nmea_longitude;
+	char ew;
+	int lock;
+	int satelites;
+	float hdop;
+	float msl_altitude;
+	char msl_units;
+	float dec_longitude;
+	float dec_latitude;
 
+};
+
+float GPS_nmea_to_dec(float deg_coord, char nsew) {
+    int degree = (int)(deg_coord/100);
+    float minutes = deg_coord - degree*100;
+    float dec_deg = minutes / 60;
+    float decimal = degree + dec_deg;
+    if (nsew == 'S' || nsew == 'W') { // return negative
+        decimal *= -1;
+    }
+    return decimal;
+}
+
+void GPSR_dataParse(char *data){
+	char str[100];
+	debugPrint(data);
+	debugPrint("\r\n");
+	if(!strncmp(data, "$GPGGA", 6)){
+		debugPrint("GOT\r\n");
+		int a=sscanf(data, "$GPGGA,%c,%c,%c,%f,%c,%d,%d,%f,%f,%c",
+				&GPS.ew, &GPS.ew, &GPS.ns,
+				&GPS.nmea_longitude, &GPS.ew, &GPS.lock, &GPS.satelites,
+				&GPS.hdop, &GPS.msl_altitude, &GPS.msl_units);
+		sprintf(str,"cnt: %d\r\n",a);
+		debugPrint(str);
+
+			/*GPS.dec_latitude = GPS_nmea_to_dec(GPS.nmea_latitude, GPS.ns);
+			GPS.dec_longitude = GPS_nmea_to_dec(GPS.nmea_longitude, GPS.ew);
+			sprintf(str,"longitude: %f latitude: %f\r\n",
+					GPS.dec_longitude, GPS.dec_latitude);
+			debugPrint(str);*/
+		return;
+	}
+
+	//debugPrint(data);
+	//debugPrint("\r\n");
+	/*if(!strncmp(data, "$GPTXT", 5))
+		debugPrint("Got YOUUUU\r\n");*/
+
+}
 void GPSR_Task(void const *argument) {
 	const TickType_t delay = pdMS_TO_TICKS(10UL);
 	const TickType_t waitDelay = pdMS_TO_TICKS(1000UL);
-	uint8_t data[1] = {0};
+	uint8_t data[100] = {0};
+	uint16_t dataIdx = 0;
 
 	debugPrint("Start GPSR tasks...\r\n");
 	debugPrint("Start GPSR loop...\r\n");
 	for (;;) {
-		if (!UART_Read_IT(&huart1, data, waitDelay))
-			debugPrint(data);
+		debugPrint("line\r\n");
+		/*if (!UART_Read_IT(&huart1, data + dataIdx, waitDelay)){
+			//debugPrint(data + dataIdx);
+			if(data[dataIdx] == '\n'){
+				GPSR_dataParse((char *)data);
+
+				dataIdx = 0;
+				memset(data, 0, sizeof(data));
+			}
+			else
+				dataIdx++;
+
+		}*/
 
 		vTaskDelay(delay ? delay : 1);
 	}

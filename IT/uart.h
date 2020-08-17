@@ -36,6 +36,10 @@
                                       (__HANDLE__)->lock = UART_UNLOCKED;    \
                                     }while (0U)
 
+#define CHECK_IT(Tout)	do {	\
+							/* Do nothing */	\
+							} while(ulTaskNotifyTake(pdTRUE, Tout) == 0 )
+
 typedef enum {
 	UART_OK,
 	UART_ERR
@@ -60,6 +64,7 @@ typedef struct UART_Handle {
 
 } UART_Handle;
 
+extern TaskHandle_t IMU_TaskHandle;
 extern void debugPrint(char *);
 
 UART_State UART_Init(UART_Handle *);
