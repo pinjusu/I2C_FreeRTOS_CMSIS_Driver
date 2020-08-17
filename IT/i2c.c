@@ -248,13 +248,13 @@ I2C_State I2C_Write_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr,
 
 I2C_State I2C_Read_IT(I2C_Handle *hi2cPtr, uint8_t slaveAddr,
 		uint8_t regAddr, uint8_t *data, uint8_t dataSize) {
-
 	if (!hi2cPtr || dataSize <= 0)
 		return I2C_ERR;
 
 	for (int i=0; i<6; i++) {
 		if (!BIT_GET(hi2cPtr->instance->SR2, I2C_SR2_BUSY))
 			break;
+		debugPrint("[Warn] I2C busy..\r\n");
 
 		if (i == 5) {
 			return I2C_ERR;

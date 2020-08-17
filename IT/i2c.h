@@ -20,7 +20,7 @@
 #define BIT_MODIFY(reg, bit, mask)	BIT_WRITE(BIT_READ(reg), (((BIT_READ(reg)) & (~(mask))) | ((mask) & (bit))))
 
 #define CHECK_IT(Tout)	do {	\
-							/* Do nothing */	\
+							/* debugPrint("[Warn] IMU wait for ISR signals...\r\n"); */	\
 							} while(ulTaskNotifyTake(pdTRUE, Tout) == 0 )
 
 typedef enum {

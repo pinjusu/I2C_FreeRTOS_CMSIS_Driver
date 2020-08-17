@@ -37,10 +37,6 @@
                                       (__HANDLE__)->lock = UART_UNLOCKED;    \
                                     }while (0U)
 
-#define CHECK_IT(Tout)	do {	\
-							/* Do nothing */	\
-							} while(ulTaskNotifyTake(pdTRUE, Tout) == 0 )
-
 typedef enum {
 	UART_OK,
 	UART_ERR

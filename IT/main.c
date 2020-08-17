@@ -43,6 +43,7 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+UART_HandleTypeDef huart2_HAL;
 
 /* USER CODE BEGIN PV */
 I2C_Handle hi2c1;
@@ -51,14 +52,37 @@ UART_Handle huart2;
 TaskHandle_t IMU_TaskHandle;
 TaskHandle_t GPSR_TaskHandle;
 
+struct GPS_data {
+	float utc_time;
+	float nmea_latitude;
+	char ns;
+	float nmea_longitude;
+	char ew;
+	int lock;
+	int satelites;
+	float hdop;
+	float msl_altitude;
+	char msl_units;
+	float dec_longitude;
+	float dec_latitude;
+	char gll_status;
+	char gps_mode;
+
+	float latitude;
+	float longitude;
+} GPS;
+
+int16_t acc[3] = {0};
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void IMU_Task(void const * argument);
-void GPSR_Task(void const * argument);
+static void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN PFP */
+void IMU_Task(void const * argument);
+void GPSR_Task(void const * argument);
 void JS_Init(void);
 static void JS_I2C1_Init(void);
 static void JS_UART1_Init(void);
@@ -84,8 +108,8 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  //JS_Init();
-	HAL_Init();
+//  JS_Init();
+  HAL_Init();
 
   /* USER CODE BEGIN Init */
 
@@ -99,6 +123,7 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
+  MX_USART2_UART_Init();
 
   /* USER CODE BEGIN 2 */
   JS_I2C1_Init();
@@ -129,13 +154,20 @@ int main(void)
   /* definition and creation of defaultTask */
 
   /* USER CODE BEGIN RTOS_THREADS */
-  xTaskCreate((TaskFunction_t) IMU_Task,
-  		(const portCHAR *)"IMU_Task", 256, NULL, tskIDLE_PRIORITY + 3,
-  		&IMU_TaskHandle);
+  debugPrint("Start Main...\r\n");
 
-  xTaskCreate((TaskFunction_t) GPSR_Task,
+  BaseType_t status;
+  status = xTaskCreate((TaskFunction_t) IMU_Task,
+  		(const portCHAR *)"IMU_Task", 256, NULL, tskIDLE_PRIORITY + 4,
+  		&IMU_TaskHandle);
+  if (status == pdPASS)
+	  debugPrint("IMU task create success\r\n");
+
+  status = xTaskCreate((TaskFunction_t) GPSR_Task,
         (const portCHAR *)"GPSR_Task", 256, NULL, tskIDLE_PRIORITY + 3,
 		&GPSR_TaskHandle);
+  if (status == pdPASS)
+  	  debugPrint("GPSR task create success\r\n");
 
   vTaskStartScheduler();
   /* USER CODE END RTOS_THREADS */
@@ -189,8 +221,38 @@ void SystemClock_Config(void)
   }
 }
 
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2_HAL.Instance = USART2;
+  huart2_HAL.Init.BaudRate = 9600;
+  huart2_HAL.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2_HAL.Init.StopBits = UART_STOPBITS_1;
+  huart2_HAL.Init.Parity = UART_PARITY_NONE;
+  huart2_HAL.Init.Mode = UART_MODE_TX_RX;
+  huart2_HAL.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2_HAL.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2_HAL) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
 /* USER CODE BEGIN 4 */
 void JS_Init(void){
+	uint32_t prioritygroup;
+
 	/* Enable the FLASH prefetch buffer.
 	 * FLASH_ACR (Flash Access Control Register)
 	 * bit 4: Prefetch Buffer Enable
@@ -210,7 +272,7 @@ void JS_Init(void){
 	SysTick_Config(SystemCoreClock / 1000U);
 
 	//Reads the priority grouping field from the NVIC Interrupt Controller.
-	uint32_t prioritygroup = NVIC_GetPriorityGrouping();
+	prioritygroup = NVIC_GetPriorityGrouping();
 
 	/* NVIC_SetPriority: Sets the priority of an interrupt.
 	 * NVIC_EncodePriority: Encodes the priority for an interrupt with the given priority group,
@@ -259,6 +321,7 @@ static void JS_UART2_Init(void) {
 
 void debugPrint(char *_out) {
 	UART_Write(&huart2, (uint8_t *) _out, strlen(_out));
+//	HAL_UART_Transmit(&huart2_HAL, (uint8_t *) _out, strlen(_out), 1000);
 }
 /* USER CODE END 4 */
 
@@ -272,10 +335,10 @@ void debugPrint(char *_out) {
 void IMU_Task(void const *argument)
 {
   /* USER CODE BEGIN 5 */
+	debugPrint("IMU data create!...\r\n");
 	uint8_t data[6] = {0};
-	int16_t acc[3] = {0};
 	const TickType_t xInterruptFrequency = pdMS_TO_TICKS(500UL);
-	const TickType_t delay = pdMS_TO_TICKS(1000UL);
+	const TickType_t delay = pdMS_TO_TICKS(100UL);
 	char str[100];
 
 	debugPrint("Start IMU tasks...\r\n");
@@ -295,6 +358,8 @@ void IMU_Task(void const *argument)
 		data[0] = 0;
 		I2C_Write_IT(&hi2c1, 0x68, 0x1b, data, 1);
 		CHECK_IT(xInterruptFrequency);
+		debugPrint("Start IMU loop...\r\n");
+
 	} else {
 		sprintf(str,"Wrong who_am_i number: %d\r\n",data[0]);
 		debugPrint(str);
@@ -304,36 +369,20 @@ void IMU_Task(void const *argument)
   /* Infinite loop */
 	for(;;)
 	{
-		I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6);
-		CHECK_IT(xInterruptFrequency);
-		for(int i=0;i<3;i++)
-			acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
-		sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
-		debugPrint(str);
-
+		if (I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6) == I2C_OK) {
+			CHECK_IT(xInterruptFrequency);
+			for(int i=0;i<3;i++)
+				acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
+//			sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
+//			debugPrint(str);
+		}
+		debugPrint("IMU looping...\r\n");
 		vTaskDelay(delay ? delay : 1);
 	}
   /* USER CODE END 5 */
 }
-struct GPS_data GPS;
-struct GPS_data{
-	float utc_time;
-	float nmea_latitude;
-	char ns;
-	float nmea_longitude;
-	char ew;
-	int lock;
-	int satelites;
-	float hdop;
-	float msl_altitude;
-	char msl_units;
-	float dec_longitude;
-	float dec_latitude;
-	char gll_status;
-	char gps_mode;
-};
 
-float GPS_nmea_to_dec(float deg_coord, char nsew) {
+static float GPS_nmea_to_dec(float deg_coord, char nsew) {
     int degree = (int)(deg_coord/100);
     float minutes = deg_coord - degree*100;
     float dec_deg = minutes / 60;
@@ -344,63 +393,57 @@ float GPS_nmea_to_dec(float deg_coord, char nsew) {
     return decimal;
 }
 
-void GPSR_dataParse(char *data){
+static void GPSR_dataParse(char *data){
 	char str[100];
-	//debugPrint(data);
-	//debugPrint("\r\n");
-//	if (!strncmp(data, "$GPGGA", 6)) {
-//		if(sscanf(data, "$GPGGA,%f,%f,%c,%f,%c,%d,%d,%f,%f,%c",
-//				&GPS.utc_time, &GPS.nmea_latitude, &GPS.ns,
-//				&GPS.nmea_longitude, &GPS.ew, &GPS.lock, &GPS.satelites,
-//				&GPS.hdop, &GPS.msl_altitude, &GPS.msl_units) >= 5){
-//			memset(str,0, sizeof(str));
-//			sprintf(str,"time: %f lat: %f ns: %c long: %f ew: %c lock: %d\r\n",
-//					GPS.utc_time, GPS.nmea_latitude, GPS.ns,
-//					GPS.nmea_longitude, GPS.ew, GPS.lock);
-//			debugPrint(str);
-//		}
-//	} else
 
 	if (!strncmp(data, "$GPGLL", 6)) {
 		if(sscanf(data, "$GPGLL,%f,%c,%f,%c,%f,%c,%c", &GPS.nmea_latitude,
 			&GPS.ns, &GPS.nmea_longitude, &GPS.ew, &GPS.utc_time,
 			&GPS.gll_status, &GPS.gps_mode) >= 6) {
-			//sprintf(str,"lat: %.5f ns: %c long: %.5f ew: %c time: %f dataState: %c mode: %c\r\n",
-					//GPS.nmea_latitude, GPS.ns, GPS.nmea_longitude,
-					//GPS.ew, GPS.utc_time, GPS.gll_status, GPS.gps_mode);
-			//debugPrint(str);
-			memset(str,0, sizeof(str));
-			sprintf(str, "Lat: %f ,Long: %f\r\r\n",
-					GPS_nmea_to_dec(GPS.nmea_latitude, GPS.ns),
-					GPS_nmea_to_dec(GPS.nmea_longitude, GPS.ew));
-			debugPrint(str);
+
+
+			GPS.latitude = GPS_nmea_to_dec(GPS.nmea_latitude, GPS.ns);
+			GPS.longitude = GPS_nmea_to_dec(GPS.nmea_longitude, GPS.ew);
+
+//			memset(str,0, sizeof(str));
+//			sprintf(str, "Lat: %f ,Long: %f\r\r\n", // @suppress("Float formatting support")
+//					GPS.latitude, GPS.longitude);
+//			debugPrint(str);
 		}
 	}
+	sprintf(str, "Ax: %d, Ay: %d, Az: %d, Lat: %f, Long: %f\r\n",
+		acc[0], acc[1], acc[2], GPS.latitude, GPS.longitude);
+	debugPrint(str);
 }
+
 void GPSR_Task(void const *argument) {
-	const TickType_t delay = pdMS_TO_TICKS(500UL);
+	const TickType_t delay = pdMS_TO_TICKS(10UL);
 	const TickType_t waitDelay = pdMS_TO_TICKS(1000UL);
 	uint8_t data[100] = {0};
 	uint16_t dataIdx = 0;
 
+	GPS.latitude = 0.0f;
+	GPS.longitude = 0.0f;
+
 	debugPrint("Start GPSR tasks...\r\n");
 	debugPrint("Start GPSR loop...\r\n");
-	//for (;;)
-	//{
-		//if (!UART_Read_IT(&huart1, data + dataIdx, waitDelay)){
-			//debugPrint(data + dataIdx);
-			//if(data[dataIdx] == '\n'){
-				//GPSR_dataParse((char *)data);
+	for (;;)
+	{
+		if (UART_Read_IT(&huart1, data + dataIdx, waitDelay) == UART_OK) {
+//			debugPrint("GPSR parsing...\r\n");
 
-				//dataIdx = 0;
-				//memset(data, 0, sizeof(data));
-			//}
-			//else
-				//dataIdx++;
-		//}
+			if(data[dataIdx] == '\n'){
+				GPSR_dataParse((char *)data);
 
-		//vTaskDelay(delay ? delay : 1);
-	//}
+				dataIdx = 0;
+				memset(data, 0, sizeof(data));
+			} else
+				dataIdx++;
+		}
+
+//		debugPrint("GPSR looping...\r\n");
+		vTaskDelay(delay ? delay : 1);
+	}
 }
 
 /**
