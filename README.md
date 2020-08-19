@@ -1,1 +1,1 @@
-# I2C_FreeRTOS_CMSIS_Driver
+# I2C Driver/ UART Driver with freeRTOS and STM32F103C8T6.
