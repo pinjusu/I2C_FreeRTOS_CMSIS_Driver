@@ -39,11 +39,9 @@
 
 /* Private macro -------------------------------------------------------------*/
 /* USER CODE BEGIN PM */
-#define  TICK_INT_PRIORITY      0U    /*tick interrupt priority (lowest by default)*/
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-UART_HandleTypeDef huart2_HAL;
 
 /* USER CODE BEGIN PV */
 I2C_Handle hi2c1;
@@ -78,13 +76,11 @@ int16_t acc[3] = {0};
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-static void MX_USART2_UART_Init(void);
 
 /* USER CODE BEGIN PFP */
 void IMU_Task(void const * argument);
 void GPSR_Task(void const * argument);
-void JS_Init(void);
-static void JS_I2C1_Init(void);
+void JS_I2C1_Init(void);
 static void JS_UART1_Init(void);
 static void JS_UART2_Init(void);
 void debugPrint(char *);
@@ -108,7 +104,6 @@ int main(void)
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-//  JS_Init();
   HAL_Init();
 
   /* USER CODE BEGIN Init */
@@ -123,7 +118,6 @@ int main(void)
   /* USER CODE END SysInit */
 
   /* Initialize all configured peripherals */
-  MX_USART2_UART_Init();
 
   /* USER CODE BEGIN 2 */
   JS_I2C1_Init();
@@ -154,7 +148,6 @@ int main(void)
   /* definition and creation of defaultTask */
 
   /* USER CODE BEGIN RTOS_THREADS */
-  debugPrint("Start Main...\r\n");
 
   BaseType_t status;
   status = xTaskCreate((TaskFunction_t) IMU_Task,
@@ -164,7 +157,7 @@ int main(void)
 	  debugPrint("IMU task create success\r\n");
 
   status = xTaskCreate((TaskFunction_t) GPSR_Task,
-        (const portCHAR *)"GPSR_Task", 256, NULL, tskIDLE_PRIORITY + 3,
+        (const portCHAR *)"GPSR_Task", 450, NULL, tskIDLE_PRIORITY + 3,
 		&GPSR_TaskHandle);
   if (status == pdPASS)
   	  debugPrint("GPSR task create success\r\n");
@@ -221,74 +214,8 @@ void SystemClock_Config(void)
   }
 }
 
-static void MX_USART2_UART_Init(void)
-{
-
-  /* USER CODE BEGIN USART2_Init 0 */
-
-  /* USER CODE END USART2_Init 0 */
-
-  /* USER CODE BEGIN USART2_Init 1 */
-
-  /* USER CODE END USART2_Init 1 */
-  huart2_HAL.Instance = USART2;
-  huart2_HAL.Init.BaudRate = 9600;
-  huart2_HAL.Init.WordLength = UART_WORDLENGTH_8B;
-  huart2_HAL.Init.StopBits = UART_STOPBITS_1;
-  huart2_HAL.Init.Parity = UART_PARITY_NONE;
-  huart2_HAL.Init.Mode = UART_MODE_TX_RX;
-  huart2_HAL.Init.HwFlowCtl = UART_HWCONTROL_NONE;
-  huart2_HAL.Init.OverSampling = UART_OVERSAMPLING_16;
-  if (HAL_UART_Init(&huart2_HAL) != HAL_OK)
-  {
-    Error_Handler();
-  }
-  /* USER CODE BEGIN USART2_Init 2 */
-
-  /* USER CODE END USART2_Init 2 */
-
-}
-
 /* USER CODE BEGIN 4 */
-void JS_Init(void){
-	uint32_t prioritygroup;
-
-	/* Enable the FLASH prefetch buffer.
-	 * FLASH_ACR (Flash Access Control Register)
-	 * bit 4: Prefetch Buffer Enable
-	 */
-	SET_BIT(FLASH->ACR,FLASH_ACR_PRFTBE);
-
-	/*4 bits for pre-emption priority
-	 *0 bits for subpriority
-	 */
-	NVIC_SetPriorityGrouping(0x00000003U);
-
-	/*
-	 * Initializes the System Timer and its interrupt, and starts the System Tick Timer.
-	 * Counter is in free running mode to generate periodic interrupts.
-	 * \param [in]  ticks  Number of ticks between two interrupts.
-	 */
-	SysTick_Config(SystemCoreClock / 1000U);
-
-	//Reads the priority grouping field from the NVIC Interrupt Controller.
-	prioritygroup = NVIC_GetPriorityGrouping();
-
-	/* NVIC_SetPriority: Sets the priority of an interrupt.
-	 * NVIC_EncodePriority: Encodes the priority for an interrupt with the given priority group,
-     * preemptive priority value, and subpriority value.
-	 */
-	NVIC_SetPriority(SysTick_IRQn, NVIC_EncodePriority(prioritygroup, 0, 0));
-
-	//Alternate Function I/O clock enable
-	SET_BIT(RCC->APB2ENR, RCC_APB2ENR_AFIOEN);
-
-	//Power interface clock enable
-	SET_BIT(RCC->APB1ENR, RCC_APB1ENR_PWREN);
-
-
-}
-static void JS_I2C1_Init(void) {
+void JS_I2C1_Init(void) {
 	hi2c1.instance = I2C1;
 	hi2c1.clockSpeed = 400000;
 
@@ -321,7 +248,6 @@ static void JS_UART2_Init(void) {
 
 void debugPrint(char *_out) {
 	UART_Write(&huart2, (uint8_t *) _out, strlen(_out));
-//	HAL_UART_Transmit(&huart2_HAL, (uint8_t *) _out, strlen(_out), 1000);
 }
 /* USER CODE END 4 */
 
@@ -335,13 +261,10 @@ void debugPrint(char *_out) {
 void IMU_Task(void const *argument)
 {
   /* USER CODE BEGIN 5 */
-	debugPrint("IMU data create!...\r\n");
 	uint8_t data[6] = {0};
 	const TickType_t xInterruptFrequency = pdMS_TO_TICKS(500UL);
-	const TickType_t delay = pdMS_TO_TICKS(100UL);
+	const TickType_t delay = pdMS_TO_TICKS(500UL);
 	char str[100];
-
-	debugPrint("Start IMU tasks...\r\n");
 
 	I2C_Read_IT(&hi2c1, 0x68, 0x75, data, 1);
 	CHECK_IT(xInterruptFrequency);
@@ -358,25 +281,22 @@ void IMU_Task(void const *argument)
 		data[0] = 0;
 		I2C_Write_IT(&hi2c1, 0x68, 0x1b, data, 1);
 		CHECK_IT(xInterruptFrequency);
-		debugPrint("Start IMU loop...\r\n");
 
 	} else {
 		sprintf(str,"Wrong who_am_i number: %d\r\n",data[0]);
 		debugPrint(str);
 	}
-
-	debugPrint("Start IMU loop...\r\n");
   /* Infinite loop */
 	for(;;)
 	{
 		if (I2C_Read_IT(&hi2c1, 0x68, 0x3b, data, 6) == I2C_OK) {
 			CHECK_IT(xInterruptFrequency);
-			for(int i=0;i<3;i++)
+
+			for(int i=0; i<3; i++)
 				acc[i] = (int16_t)((data[2*i]<<8) | data[2*i+1]);
 //			sprintf(str,"Ax: %d Ay: %d Az: %d\r\n",acc[0],acc[1],acc[2]);
 //			debugPrint(str);
 		}
-		debugPrint("IMU looping...\r\n");
 		vTaskDelay(delay ? delay : 1);
 	}
   /* USER CODE END 5 */
@@ -405,12 +325,12 @@ static void GPSR_dataParse(char *data){
 			GPS.latitude = GPS_nmea_to_dec(GPS.nmea_latitude, GPS.ns);
 			GPS.longitude = GPS_nmea_to_dec(GPS.nmea_longitude, GPS.ew);
 
-//			memset(str,0, sizeof(str));
 //			sprintf(str, "Lat: %f ,Long: %f\r\r\n", // @suppress("Float formatting support")
 //					GPS.latitude, GPS.longitude);
 //			debugPrint(str);
 		}
 	}
+	//print all data.
 	sprintf(str, "Ax: %d, Ay: %d, Az: %d, Lat: %f, Long: %f\r\n",
 		acc[0], acc[1], acc[2], GPS.latitude, GPS.longitude);
 	debugPrint(str);
@@ -430,19 +350,21 @@ void GPSR_Task(void const *argument) {
 	for (;;)
 	{
 		if (UART_Read_IT(&huart1, data + dataIdx, waitDelay) == UART_OK) {
-//			debugPrint("GPSR parsing...\r\n");
+			if (data[0] == '$') {
+				if(data[dataIdx] == '\n'){
+					GPSR_dataParse((char *)data);
 
-			if(data[dataIdx] == '\n'){
-				GPSR_dataParse((char *)data);
-
-				dataIdx = 0;
-				memset(data, 0, sizeof(data));
-			} else
-				dataIdx++;
+					dataIdx = 0;
+					memset(data, 0, sizeof(data));
+				} else
+					dataIdx++;
+			}
 		}
 
-//		debugPrint("GPSR looping...\r\n");
-		vTaskDelay(delay ? delay : 1);
+		if (uxQueueSpacesAvailable(huart1.rxQueueHandle) == 0)
+			xQueueReset(huart1.rxQueueHandle);
+
+		vTaskDelay(delay);
 	}
 }
 

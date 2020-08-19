@@ -20,14 +20,32 @@
 #define BIT_MODIFY(reg, bit, mask)	BIT_WRITE(BIT_READ(reg), (((BIT_READ(reg)) & (~(mask))) | ((mask) & (bit))))
 
 #define CHECK_IT(Tout)	do {	\
-							/* debugPrint("[Warn] IMU wait for ISR signals...\r\n"); */	\
+								\
 							} while(ulTaskNotifyTake(pdTRUE, Tout) == 0 )
+
+#define I2C_LOCK(__HANDLE__)    	do{                                    \
+                                    if((__HANDLE__)->lock == I2C_LOCKED)   \
+                                    {                                      \
+                                       return I2C_ERR;                     \
+                                    }                                      \
+                                    else                                   \
+                                    {                                      \
+                                       (__HANDLE__)->lock = I2C_LOCKED;    \
+                                    }                                      \
+                            		}while (0U)
+#define I2C_UNLOCK(__HANDLE__)  	do{                                    \
+                                      (__HANDLE__)->lock = I2C_UNLOCKED;   \
+                                    }while (0U)
 
 typedef enum {
 	I2C_OK,
 	I2C_ERR
 
 } I2C_State;
+typedef enum {
+	I2C_UNLOCKED,
+	I2C_LOCKED
+} I2C_Lock;
 
 typedef enum {
 	I2C_READ,
@@ -50,8 +68,10 @@ typedef struct _I2C_Handle {
 	uint8_t    		*buffPtr;
 	uint8_t   		sizeBuff;
 	uint8_t			currSizeBuff;
+	_Bool			regAddrEvIsSend;
+	_Bool			lock;
 
-	I2C_Mode			Mode;
+	I2C_Mode		Mode;
 	I2C_TransferOp	TransferOptions;
 } I2C_Handle;
 

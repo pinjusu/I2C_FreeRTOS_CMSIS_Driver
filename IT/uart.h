@@ -23,18 +23,18 @@
 #define BIT_CLEAR(reg, bit)			((reg) &= ~(bit))
 #define BIT_MODIFY(reg, bit, mask)	BIT_WRITE(BIT_READ(reg), (((BIT_READ(reg)) & (~(mask))) | ((mask) & (bit))))
 
-#define UART_LOCK(__HANDLE__)    	do{                                        \
-                                    if((__HANDLE__)->lock == UART_LOCKED)   \
+#define UART_LOCK(__HANDLE__)    	do{                                    \
+                                    if((__HANDLE__)->lock == UART_LOCKED)  \
                                     {                                      \
                                        return UART_ERR;                    \
                                     }                                      \
                                     else                                   \
                                     {                                      \
-                                       (__HANDLE__)->lock = UART_LOCKED;    \
+                                       (__HANDLE__)->lock = UART_LOCKED;   \
                                     }                                      \
                             		}while (0U)
-#define UART_UNLOCK(__HANDLE__)  	do{                                       \
-                                      (__HANDLE__)->lock = UART_UNLOCKED;    \
+#define UART_UNLOCK(__HANDLE__)  	do{                                    \
+                                      (__HANDLE__)->lock = UART_UNLOCKED;  \
                                     }while (0U)
 
 typedef enum {
