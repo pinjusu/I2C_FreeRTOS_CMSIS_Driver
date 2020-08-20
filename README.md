@@ -24,5 +24,5 @@
 * **UART_Read(blocking)/UART_Read_IT(with interrupt)**: recieve the data through UART.
   * Example: huart1.enableIT = 0 (blocking) or 1(interrupt) for uart1. You can check the default setting in main file.
   
-#### example file: Main.c
+### Example file: Main.c
 Take IMU(MPU9250) and GPS(NEO-6M) as example and schedule these two tasks by freeRTOS.
